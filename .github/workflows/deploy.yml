@@ -1,0 +1,56 @@
+name: CI / Deploy a AWS App Runner
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write   # OIDC hacia AWS (sin llaves de acceso guardadas)
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: isariza-store
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}   # output github_deploy_role_arn de Terraform
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE=$REGISTRY/$ECR_REPOSITORY
+          docker build \
+            --build-arg NEXT_PUBLIC_GA_MEASUREMENT_ID=${{ vars.GA_MEASUREMENT_ID }} \
+            --build-arg SITE_URL=${{ vars.SITE_URL }} \
+            -t $IMAGE:${{ github.sha }} -t $IMAGE:latest .
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+          # App Runner tiene auto_deployments_enabled: el push de :latest dispara el despliegue

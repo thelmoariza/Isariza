@@ -1,0 +1,7 @@
+region           = "us-east-1"
+environment      = "prod"
+site_url         = "https://isarizasabores.com"   # o la URL de App Runner mientras no haya dominio
+custom_domain    = ""                             # "isarizasabores.com" cuando lo tengas
+wompi_env        = "sandbox"                      # cambia a "production" al salir en vivo
+wompi_public_key = "pub_test_xxxxxxxxxxxxxxxx"
+github_repo      = ""                             # "tu-usuario/isariza-store" para CI/CD con OIDC

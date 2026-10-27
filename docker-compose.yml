@@ -1,0 +1,44 @@
+# Entorno local "igual a AWS": app en contenedor + DynamoDB Local.
+#   docker compose up --build
+#   → http://localhost:3000   (pedidos en DynamoDB Local, puerto 8000)
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:2.5.2
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data"
+    ports: ["8000:8000"]
+    volumes: ["dynamodb-data:/home/dynamodblocal/data"]
+    user: root
+
+  init-table:
+    image: node:20-alpine
+    depends_on: [dynamodb]
+    working_dir: /app
+    volumes: ["./scripts:/app/scripts:ro", "./package.json:/app/package.json:ro"]
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      DYNAMODB_TABLE: isariza-orders
+      AWS_REGION: us-east-1
+    command: sh -c "npm i --no-save --no-audit --no-fund @aws-sdk/client-dynamodb@3 >/dev/null && node scripts/create-local-table.mjs"
+
+  web:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}
+        SITE_URL: http://localhost:3000
+    ports: ["3000:3000"]
+    env_file: [.env.local]
+    environment:
+      SITE_URL: http://localhost:3000
+      ORDERS_STORE: dynamodb
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      DYNAMODB_TABLE: isariza-orders
+      AWS_REGION: us-east-1
+      # Sin llaves de Wompi usa el simulador de pagos. Con llaves sandbox va al checkout real.
+      PAYMENT_SIMULATOR: "true"
+    depends_on:
+      init-table:
+        condition: service_completed_successfully
+
+volumes:
+  dynamodb-data:
